@@ -2,39 +2,43 @@ package handler
 
 import (
 	"fmt"
-	"github.com/winterssy/music-get/common"
-	"github.com/winterssy/music-get/utils/logger"
 	"os"
 	"path/filepath"
 	"sync"
+
+	"github.com/winterssy/music-get/common"
 )
 
 func SingleDownload(mp3List []*common.MP3) {
 	total, success, failure, ignore := len(mp3List), 0, 0, 0
-	var err error
-	wg := &sync.WaitGroup{}
-	for _, m := range mp3List {
-		if !m.Playable {
-			logger.Info.Printf("Ignore no coypright music: %s", m.Tag.Title)
-			ignore++
-			continue
-		}
-		logger.Info.Printf("Downloading: %s", m.FileName)
-		if err = m.SingleDownload(); err != nil {
-			failure++
-			logger.Error.Printf("Download error: %s", err.Error())
-			_ = os.Remove(filepath.Join(m.SavePath, m.FileName))
-			continue
-		}
-		logger.Info.Print("Download complete")
-		success++
 
-		wg.Add(1)
-		go m.UpdateTag(wg)
+	wg := &sync.WaitGroup{}
+	var failureInfo []DownloadError
+	for _, m := range mp3List {
+		switch status := m.SingleDownload(); status {
+		case common.DownloadSuccess:
+			success++
+			wg.Add(1)
+			go m.UpdateTag(wg)
+		case common.DownloadNoCopyrightError, common.DownloadAlready:
+			ignore++
+		default:
+			failure++
+			failureInfo = append(failureInfo, newDownloadError(m.FileName, m.DownloadURL, status))
+			// ignore error
+			os.Remove(filepath.Join(m.SavePath, m.FileName))
+		}
 	}
 	wg.Wait()
 
 	fmt.Printf("\nDownload report --> total: %d, success: %d, failure: %d, ignore: %d\n", total, success, failure, ignore)
+
+	if len(failureInfo) == 0 {
+		return
+	}
+	if err := outputLog(failureInfo); err == nil {
+		fmt.Printf("\nSee more info in %q\n", LogFileName)
+	}
 }
 
 func ConcurrentDownload(mp3List []*common.MP3, n int) {
@@ -50,23 +54,31 @@ func ConcurrentDownload(mp3List []*common.MP3, n int) {
 	}
 	wg.Wait()
 
+	var failureInfo []DownloadError
 	for range mp3List {
 		task := <-taskList
-		switch task.Status {
+		switch status := task.Status; status {
 		case common.DownloadSuccess:
 			success++
 			wg.Add(1)
 			go task.MP3.UpdateTag(wg)
-			break
-		case common.DownloadNoCopyrightError:
+		case common.DownloadNoCopyrightError, common.DownloadAlready:
 			ignore++
-			break
 		default:
 			failure++
-			_ = os.Remove(filepath.Join(task.MP3.SavePath, task.MP3.FileName))
+			failureInfo = append(failureInfo, newDownloadError(task.MP3.FileName, task.MP3.DownloadURL, status))
+			// ignore error
+			os.Remove(filepath.Join(task.MP3.SavePath, task.MP3.FileName))
 		}
 	}
 	wg.Wait()
 
 	fmt.Printf("\nDownload report --> total: %d, success: %d, failure: %d, ignore: %d\n", total, success, failure, ignore)
+
+	if len(failureInfo) == 0 {
+		return
+	}
+	if err := outputLog(failureInfo); err == nil {
+		fmt.Printf("\nSee more info in %q\n", LogFileName)
+	}
 }

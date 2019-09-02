@@ -2,16 +2,17 @@ package tencent
 
 import (
 	"fmt"
-	"github.com/winterssy/music-get/common"
 	"regexp"
+
+	"github.com/winterssy/music-get/common"
 )
 
 const (
-	UrlPattern = "/(song|singer|album|playsquare)/(\\w+)\\.html"
+	URLPattern = "/(song|singer|album|playsquare|playlist)/(\\w+)\\.html"
 )
 
 func Parse(url string) (req common.MusicRequest, err error) {
-	re := regexp.MustCompile(UrlPattern)
+	re := regexp.MustCompile(URLPattern)
 	matched, ok := re.FindStringSubmatch(url), re.MatchString(url)
 	if !ok || len(matched) < 3 {
 		err = fmt.Errorf("could not parse the url: %s", url)
@@ -25,7 +26,7 @@ func Parse(url string) (req common.MusicRequest, err error) {
 		req = NewSingerRequest(matched[2])
 	case "album":
 		req = NewAlbumRequest(matched[2])
-	case "playsquare":
+	case "playsquare", "playlist":
 		req = NewPlaylistRequest(matched[2])
 	}
 

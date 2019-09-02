@@ -2,39 +2,60 @@ package main
 
 import (
 	"flag"
-	"github.com/winterssy/music-get/common"
+
+	"github.com/winterssy/easylog"
+	"github.com/winterssy/music-get/conf"
 	"github.com/winterssy/music-get/handler"
 	"github.com/winterssy/music-get/utils"
-	"github.com/winterssy/music-get/utils/logger"
 )
 
 func main() {
+	// For debug
+	// easylog.SetFlags(easylog.LstdFlags|easylog.Lshortfile)
+	// easylog.SetLevel(easylog.Ldebug)
+
 	if len(flag.Args()) == 0 {
-		logger.Error.Fatal("Missing music address")
+		easylog.Fatal("Missing music address")
 	}
 
-	if err := utils.BuildPathIfNotExist(common.MP3DownloadDir); err != nil {
-		logger.Error.Fatalf("Failed to build path: %s: %s", common.MP3DownloadDir, err)
+	if err := utils.BuildPathIfNotExist(conf.MP3DownloadDir); err != nil {
+		easylog.Fatalf("Failed to build path: %s: %s", conf.MP3DownloadDir, err)
 	}
 
 	url := flag.Args()[0]
 	req, err := handler.Parse(url)
 	if err != nil {
-		logger.Error.Fatal(err)
+		easylog.Fatal(err)
+	}
+
+	if req.RequireLogin() {
+		easylog.Info("Local cached cookies expired, please login to refresh...")
+		if err = req.Login(); err != nil {
+			easylog.Errorf("Login failed: %s", err.Error())
+		}
+		easylog.Info("Login successful")
+	}
+
+	if err := conf.M.Save(); err != nil {
+		easylog.Warnf("Save config error: %s", err.Error())
 	}
 
 	if err = req.Do(); err != nil {
-		logger.Error.Fatal(err)
+		easylog.Fatal(err)
 	}
 
 	mp3List, err := req.Extract()
 	if err != nil {
-		logger.Error.Fatal(err)
+		easylog.Fatal(err)
 	}
 
-	n := common.MP3ConcurrentDownloadTasksNumber
-	if n > common.MaxConcurrentDownloadTasksNumber {
-		n = common.MaxConcurrentDownloadTasksNumber
+	if len(mp3List) == 0 {
+		return
+	}
+
+	n := conf.MP3ConcurrentDownloadTasksNumber
+	if n > conf.MaxConcurrentDownloadTasksNumber {
+		n = conf.MaxConcurrentDownloadTasksNumber
 	}
 	switch {
 	case n > 1:

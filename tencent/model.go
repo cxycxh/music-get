@@ -2,14 +2,15 @@ package tencent
 
 import (
 	"fmt"
-	"github.com/winterssy/music-get/common"
-	"github.com/winterssy/music-get/utils"
 	"strings"
 	"time"
+
+	"github.com/winterssy/music-get/common"
+	"github.com/winterssy/music-get/utils"
 )
 
 const (
-	AlbumPicUrl = "https://y.gtimg.cn/music/photo_new/T002R300x300M000%s.jpg"
+	AlbumPicURL = "https://y.gtimg.cn/music/photo_new/T002R300x300M000%s.jpg"
 )
 
 type Singer struct {
@@ -33,7 +34,7 @@ type GetAlbumInfo struct {
 type Song struct {
 	Id         int      `json:"id"`
 	Mid        string   `json:"mid"`
-	Name       string   `json:"name"`
+	Title      string   `json:"title"`
 	Singer     []Singer `json:"singer"`
 	Album      Album    `json:"album"`
 	IndexAlbum int      `json:"index_album"`
@@ -50,12 +51,11 @@ type CD struct {
 }
 
 func (s *Song) Extract() *common.MP3 {
-	title, album := strings.TrimSpace(s.Name), strings.TrimSpace(s.Album.Name)
-	// QQ音乐支持下载无版权的音乐
-	//playable := s.Action.Switch == 65537
+	title, album := strings.TrimSpace(s.Title), strings.TrimSpace(s.Album.Name)
+	playable := s.Action.Switch != 65537
 	publishTime, _ := time.Parse("2006-01-02", s.TimePublic)
 	year, track := fmt.Sprintf("%d", publishTime.Year()), fmt.Sprintf("%d", s.IndexAlbum)
-	coverImage := fmt.Sprintf(AlbumPicUrl, s.Album.Mid)
+	coverImage := fmt.Sprintf(AlbumPicURL, s.Album.Mid)
 
 	artistList := make([]string, 0, len(s.Singer))
 	for _, ar := range s.Singer {
@@ -75,7 +75,7 @@ func (s *Song) Extract() *common.MP3 {
 
 	return &common.MP3{
 		FileName: fileName,
-		Playable: true,
+		Playable: playable,
 		Tag:      tag,
 		Origin:   common.TencentMusic,
 	}
