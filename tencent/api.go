@@ -10,11 +10,72 @@ import (
 )
 
 const (
+	SongURLAPI  = "https://u.y.qq.com/cgi-bin/musicu.fcg"
 	SongAPI     = "https://c.y.qq.com/v8/fcg-bin/fcg_play_single_song.fcg"
 	ArtistAPI   = "https://c.y.qq.com/v8/fcg-bin/fcg_v8_singer_track_cp.fcg"
 	AlbumAPI    = "https://c.y.qq.com/v8/fcg-bin/fcg_v8_album_detail_cp.fcg"
 	PlaylistAPI = "https://c.y.qq.com/v8/fcg-bin/fcg_v8_playlist_cp.fcg"
 )
+
+type SongURLResponse struct {
+	Code int `json:"code"`
+	Req0 struct {
+		Data struct {
+			MidURLInfo []struct {
+				SongMid string `json:"songmid"`
+				Vkey    string `json:"vkey"`
+			} `json:"midurlinfo"`
+			TestFile2g string `json:"testfile2g"`
+		} `json:"data"`
+	} `json:"req0"`
+}
+
+type SongURLRequest struct {
+	Params   map[string]string
+	Response SongURLResponse
+}
+
+func NewSongURLRequest(guid string, mids ...string) *SongURLRequest {
+	param := map[string]interface{}{
+		"guid":      guid,
+		"loginflag": 1,
+		"songmid":   mids,
+		"uin":       "0",
+		"platform":  "20",
+	}
+	req0 := map[string]interface{}{
+		"module": "vkey.GetVkeyServer",
+		"method": "CgiGetVkey",
+		"param":  param,
+	}
+	data := map[string]interface{}{
+		"req0": req0,
+	}
+
+	enc, _ := json.Marshal(data)
+	query := map[string]string{
+		"data": string(enc),
+	}
+
+	return &SongURLRequest{Params: query}
+}
+
+func (s *SongURLRequest) Do() error {
+	resp, err := common.Request("GET", SongURLAPI, s.Params, nil, common.TencentMusic)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if err = json.NewDecoder(resp.Body).Decode(&s.Response); err != nil {
+		return err
+	}
+	if s.Response.Code != 0 {
+		return fmt.Errorf("%s %s error: %d", resp.Request.Method, resp.Request.URL.String(), s.Response.Code)
+	}
+
+	return nil
+}
 
 type SongResponse struct {
 	Code int    `json:"code"`

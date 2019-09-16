@@ -1,31 +1,59 @@
 package tencent
 
 import (
+	"errors"
 	"fmt"
+	"regexp"
 
-	"github.com/winterssy/easylog"
 	"github.com/winterssy/music-get/common"
 )
 
 const (
-	SongDownloadURL = "http://dl.stream.qqmusic.qq.com/%s?guid=%s&vkey=%s&fromtag=66"
+	SongDownloadURL = "http://aqqmusic.tc.qq.com/amobile.music.tc.qq.com/M500%s.mp3?guid=%s&vkey=%s&uin=0&fromtag=8"
 )
 
 func ExtractMP3List(songs []Song, savePath string) ([]*common.MP3, error) {
-	// 测试发现 guid 可以是随机字符串
-	guid := "yqq"
+	n := len(songs)
+	// mids := make([]string, 0, n)
+	// for _, i := range songs {
+	// 	mids = append(mids, i.Mid)
+	// }
+	if n == 0 {
+		return nil, errors.New("empty song list")
+	}
+
+	guid := "7332953645"
+	req := NewSongURLRequest(guid, songs[0].Mid)
+	if err := req.Do(); err != nil {
+		return nil, err
+	}
+
+	re := regexp.MustCompile("vkey=(\\w+)")
+	matched, ok := re.FindStringSubmatch(req.Response.Req0.Data.TestFile2g), re.MatchString(req.Response.Req0.Data.TestFile2g)
+	if !ok {
+		return nil, errors.New("get vkey failed")
+	}
+	defaultVkey := matched[1]
+
+	// urlMap := make(map[string]string, n)
+	// for _, i := range req.Response.Req0.Data.MidURLInfo {
+	// 	if i.Vkey == "" {
+	// 		urlMap[i.SongMid] = defaultVkey
+	// 	} else {
+	// 		urlMap[i.SongMid] = i.Vkey
+	// 	}
+	// }
+
 	mp3List := make([]*common.MP3, 0, len(songs))
 	for _, i := range songs {
 		mp3 := i.Extract()
-		vkey, filename, err := getVKey(guid, i.Mid, "M500", "mp3")
-		if err != nil || vkey == "" {
-			easylog.Errorf("get vkey failed: %s", i.Mid)
-			continue
-		}
-		mp3.DownloadURL = fmt.Sprintf(SongDownloadURL, filename, guid, vkey)
+		// if urlMap[i.Mid] == "" {
+		// 	easylog.Errorf("get vkey failed: %s", i.Mid)
+		// 	continue
+		// }
+		mp3.DownloadURL = fmt.Sprintf(SongDownloadURL, i.Mid, guid, defaultVkey)
 		mp3.SavePath = savePath
 		mp3List = append(mp3List, mp3)
 	}
-
 	return mp3List, nil
 }
