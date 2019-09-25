@@ -9,12 +9,13 @@ import (
 )
 
 func main() {
-	// For debug
-	// easylog.SetFlags(easylog.LstdFlags|easylog.Lshortfile)
-	// easylog.SetLevel(easylog.Ldebug)
-
+	flag.Parse()
 	if len(flag.Args()) == 0 {
 		easylog.Fatal("Missing music address")
+	}
+
+	if err := conf.Init(); err != nil {
+		easylog.Fatal(err)
 	}
 
 	url := flag.Args()[0]
@@ -24,14 +25,14 @@ func main() {
 	}
 
 	if req.RequireLogin() {
-		easylog.Info("Local cached cookies expired, please login to refresh...")
+		easylog.Info("Unauthorized, please login")
 		if err = req.Login(); err != nil {
-			easylog.Errorf("Login failed: %s", err.Error())
+			easylog.Fatalf("Login failed: %s", err.Error())
 		}
 		easylog.Info("Login successful")
 	}
 
-	if err := conf.M.Save(); err != nil {
+	if err := conf.Conf.Save(); err != nil {
 		easylog.Errorf("Save config failed: %s", err.Error())
 	}
 
@@ -48,11 +49,7 @@ func main() {
 		return
 	}
 
-	n := conf.MP3ConcurrentDownloadTasksNumber
-	if n > conf.MaxConcurrentDownloadTasksNumber {
-		n = conf.MaxConcurrentDownloadTasksNumber
-	}
-
+	n := conf.Conf.ConcurrentDownloadTasksCount
 	switch {
 	case n > 1:
 		handler.ConcurrentDownload(mp3List, n)

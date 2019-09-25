@@ -2,21 +2,14 @@ package provider
 
 import (
 	"io"
-	"io/ioutil"
-	"net/url"
 	"os"
 	"path/filepath"
 	"sync"
-	"time"
 
-	"gopkg.in/cheggaaa/pb.v1"
-
-	"github.com/bogem/id3v2"
-
-	"github.com/winterssy/music-get/pkg/ecode"
-
+	"github.com/cheggaaa/pb/v3"
 	"github.com/winterssy/easylog"
 	"github.com/winterssy/music-get/conf"
+	"github.com/winterssy/music-get/pkg/ecode"
 	"github.com/winterssy/music-get/utils"
 )
 
@@ -76,14 +69,14 @@ func (m *MP3) SingleDownload() (status int) {
 		return
 	}
 
-	m.SavePath = filepath.Join(conf.MP3DownloadDir, m.SavePath)
+	m.SavePath = filepath.Join(conf.Conf.DownloadDir, m.SavePath)
 	if err := utils.BuildPathIfNotExist(m.SavePath); err != nil {
 		status = ecode.BuildPathException
 		return
 	}
 
 	fPath := filepath.Join(m.SavePath, m.FileName)
-	if !conf.DownloadOverwrite {
+	if !conf.Conf.DownloadOverwrite {
 		if downloaded, _ := utils.ExistsPath(fPath); downloaded {
 			status = ecode.AlreadyDownloaded
 			return
@@ -98,18 +91,17 @@ func (m *MP3) SingleDownload() (status int) {
 	}
 	defer resp.Body.Close()
 
-	f, err := os.Create(fPath)
+	f, err := os.OpenFile(fPath, os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		status = ecode.BuildFileException
 		return
 	}
 	defer f.Close()
 
-	bar := pb.New(int(resp.ContentLength)).SetUnits(pb.U_BYTES).SetRefreshRate(100 * time.Millisecond)
-	bar.ShowSpeed = true
+	bar := pb.Full.Start64(resp.ContentLength)
 	bar.Start()
-	reader := bar.NewProxyReader(resp.Body)
-	n, err := io.Copy(f, reader)
+	barReader := bar.NewProxyReader(resp.Body)
+	n, err := io.Copy(f, barReader)
 	if err != nil || n != resp.ContentLength {
 		status = ecode.FileTransferException
 		return
@@ -142,14 +134,14 @@ func (m *MP3) ConcurrentDownload(taskList chan DownloadTask, taskQueue chan stru
 		return
 	}
 
-	m.SavePath = filepath.Join(conf.MP3DownloadDir, m.SavePath)
+	m.SavePath = filepath.Join(conf.Conf.DownloadDir, m.SavePath)
 	if err := utils.BuildPathIfNotExist(m.SavePath); err != nil {
 		status = ecode.BuildPathException
 		return
 	}
 
 	fPath := filepath.Join(m.SavePath, m.FileName)
-	if !conf.DownloadOverwrite {
+	if !conf.Conf.DownloadOverwrite {
 		if downloaded, _ := utils.ExistsPath(fPath); downloaded {
 			status = ecode.AlreadyDownloaded
 			return
@@ -179,64 +171,4 @@ func (m *MP3) ConcurrentDownload(taskList chan DownloadTask, taskQueue chan stru
 
 	status = ecode.Success
 	return
-}
-
-func (m *MP3) UpdateTag(wg *sync.WaitGroup) {
-	var err error
-	defer func() {
-		if err != nil {
-			easylog.Errorf("Update music tag failure: %s: %s", m.FileName, err.Error())
-		}
-		wg.Done()
-	}()
-
-	file := filepath.Join(m.SavePath, m.FileName)
-	tag, err := id3v2.Open(file, id3v2.Options{Parse: true})
-	if err != nil {
-		return
-	}
-	defer tag.Close()
-
-	tag.SetDefaultEncoding(id3v2.EncodingUTF8)
-	tag.SetTitle(m.Tag.Title)
-	tag.SetArtist(m.Tag.Artist)
-	tag.SetAlbum(m.Tag.Album)
-	tag.SetYear(m.Tag.Year)
-	textFrame := id3v2.TextFrame{
-		Encoding: id3v2.EncodingUTF8,
-		Text:     m.Tag.Track,
-	}
-	tag.AddFrame(tag.CommonID("Track number/Position in set"), textFrame)
-
-	if picURL, _ := url.Parse(m.Tag.CoverImageURL); picURL != nil {
-		if err = writeCoverImage(tag, m.Tag.CoverImageURL, m.Provider); err != nil {
-			easylog.Errorf("Update music cover image failure: %s: %s", m.Tag.Title, err.Error())
-		}
-	}
-
-	if err = tag.Save(); err == nil {
-		easylog.Infof("Music tag updated: %s", m.FileName)
-	}
-}
-
-func writeCoverImage(tag *id3v2.Tag, coverImage string, origin int) error {
-	resp, err := Request("GET", coverImage, nil, nil, origin)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	data, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-
-	pic := id3v2.PictureFrame{
-		Encoding:    id3v2.EncodingUTF8,
-		MimeType:    "image/jpg",
-		PictureType: id3v2.PTFrontCover,
-		Picture:     data,
-	}
-	tag.AddAttachedPicture(pic)
-	return nil
 }
